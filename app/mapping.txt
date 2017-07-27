@@ -1,0 +1,5 @@
+com.letv.tv.publiclib.LibTest -> a.a.a.a.a:
+    void output() -> a
+tv.letv.com.leplugingradletest.MainActivity -> tv.letv.com.leplugingradletest.MainActivity:
+    void <init>() -> <init>
+    void onCreate(android.os.Bundle) -> onCreate
