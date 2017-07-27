@@ -16,6 +16,7 @@ gen/
 # Gradle files
 .gradle/
 build/
+repo/
 gradle/
 gradlew
 gradlew.bat
