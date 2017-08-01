@@ -36,7 +36,6 @@ android {
 //apply plugin: 'com.letv.tv.letvplugin'
 dependencies {
 
-    compile project(path: ':publiclib')
-    provided files('libs/classes.jar')
+    provided project(path: ':publiclib')
 }
 
