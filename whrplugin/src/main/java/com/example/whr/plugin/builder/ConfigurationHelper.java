@@ -2,25 +2,27 @@ package com.example.whr.plugin.builder;
 
 import com.android.build.gradle.api.ApplicationVariant;
 import com.android.build.gradle.api.BaseVariantOutput;
+import com.android.build.gradle.internal.dsl.ProductFlavor;
+import com.example.whr.plugin.builder.configuration.BaseConfiguration;
 import com.example.whr.plugin.builder.hook.AppPluginHook;
 import com.example.whr.plugin.builder.tool.AaptUtls;
 import com.example.whr.plugin.builder.tool.GradleUtils;
+import com.example.whr.plugin.builder.tool.StringUtils;
 
 import org.gradle.api.Action;
+import org.gradle.api.DomainObjectSet;
 import org.gradle.api.Project;
 import org.gradle.api.Task;
 import org.gradle.api.artifacts.Configuration;
 import org.gradle.api.artifacts.Dependency;
-
 import org.gradle.api.file.ConfigurableFileTree;
 import org.gradle.api.file.CopySpec;
 import org.gradle.api.internal.artifacts.dependencies.DefaultProjectDependency;
 
 import java.io.File;
-
+import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Consumer;
-
 
 /**
  * Created by whrwhr446 on 11/07/2017.
@@ -28,9 +30,11 @@ import java.util.function.Consumer;
 
 public class ConfigurationHelper {
     private static final String PLUGIN_COMPILE = "pluginCompile";
-    private static final String DEBUG_INJECTASKNAME = "prePackageMarkerFor";
-    private static final String RELEASE_INJECTASKNAME = "transformClassesAndResourcesWithProguardFor";
+    private static final String DEBUG_INJECTASKNAME = "transformResourcesWithMergeJavaResfor";// 2.1.0 for "prepackagemarkerfor";
+    private static final String RELEASE_INJECTASKNAME = "transformclassesandresourceswithproguardfor";
     private Project project;
+    //该目录写死 用来存放生成的plugin的apk文件；写死主要是因为：
+    // 在apk中assets的目录是写死的。
     private String PLUGIN_ASSETS_PATH = "/assets/plugins/";
     private String creator;
     private AppPluginHook appPluginHook;
@@ -43,31 +47,38 @@ public class ConfigurationHelper {
     }
     public void createPluginConfiguration(){
         Configuration pluginConfiguration = project.getConfigurations().findByName(PLUGIN_COMPILE);
+
         if(null == pluginConfiguration){
-            Configuration config = project.getConfigurations().create(PLUGIN_COMPILE);
+            BaseConfiguration baseConfiguration = new BaseConfiguration(project,PLUGIN_COMPILE);
+
             project.afterEvaluate(new Action<Project>() {
                 @Override
                 public void execute(Project project) {
                     List<String> taskNames = GradleUtils.getInputTaskNames(project);
                     for(String taskName : taskNames){
+                        Configuration config = baseConfiguration.getConfigurationByTaskName(taskName);
                         config.getDependencies().forEach(new Consumer<Dependency>() {
                             @Override
                             public void accept(Dependency dependency) {
                                 if(dependency instanceof DefaultProjectDependency){
                                     DefaultProjectDependency projectDependency = (DefaultProjectDependency) dependency;
                                     Project pluginProject = projectDependency.getDependencyProject();
-                                    Task injectTask = getInjectTask();
                                     BaseVariantOutput appVariantOutput = getVariantOutputByTaskName(project,taskName);
                                     BaseVariantOutput pluginVariantOutput = getVariantOutputByTaskName(pluginProject,taskName);
                                     if(null != pluginVariantOutput && null != appVariantOutput){
                                         Task assembleTask = pluginVariantOutput.getAssemble();
+                                        ApplicationVariant variant = getVariantByTaskName(project,taskName);
+                                        Task injectTask = getInjectTask(variant);
+                                        if(injectTask == null) return;
+                                        clearFile(pluginProject,PLUGIN_ASSETS_PATH);
                                         injectTask.doLast(new Action<Task>() {
                                             @Override
                                             public void execute(Task task) {
                                                 //混淆任务完成之后，将mapping文件copy到app项目的更目录
-                                                copyMapping(getVariantByTaskName(project,taskName));
+                                                copyMapping(variant);
                                             }
                                         });
+                                        System.out.println("injectTask :"+injectTask.getName() + "; assembleTask :"+assembleTask.getName());
                                         //注入plugin的assemble任务
                                         injectTask.finalizedBy(assembleTask);
 
@@ -77,7 +88,6 @@ public class ConfigurationHelper {
                                             public void execute(Task task) {
 
                                                 //这里copy一次，原因aapt add 没找到能指定添加路径的参数。
-                                                clearFile(pluginProject,PLUGIN_ASSETS_PATH);
                                                 String pluginDistPath =copyPluginApkToAssets(pluginVariantOutput);
 
                                                 //这是签名之前的apk的路径
@@ -103,15 +113,18 @@ public class ConfigurationHelper {
     public void hookPluginDependencyMananger(){
         appPluginHook.replaceTaskManager();
     }
-    private Task getInjectTask(){
+    private Task getInjectTask(ApplicationVariant variant){
         final Task[] task = new Task[1];
         project.getTasks().forEach(new Consumer<Task>() {
             @Override
             public void accept(Task tk) {
-                if(tk.getName().indexOf(RELEASE_INJECTASKNAME) != -1){
+                String tkName = tk.getName();
+                String injecReleasetName = RELEASE_INJECTASKNAME+variant.getFlavorName()+variant.getBuildType().getName();
+                String injectDebugName =DEBUG_INJECTASKNAME+variant.getFlavorName()+variant.getBuildType().getName();
+                if(StringUtils.lowercaseEqual(tkName,injecReleasetName)){
                     task[0] = tk;
                 }
-                if(tk.getName().indexOf(DEBUG_INJECTASKNAME) != -1){
+                if(StringUtils.lowercaseEqual(tkName,injectDebugName)){
                     task[0] = tk;
                 }
             }
@@ -130,9 +143,6 @@ public class ConfigurationHelper {
         });
     }
     private void clearFile(Project project,String path){
-        File file = new File(path);
-
-
         ConfigurableFileTree fileTree =project.fileTree(new File(path));
         fileTree.include(project.getName()+"*.apk");
         project.delete(fileTree);
@@ -149,6 +159,7 @@ public class ConfigurationHelper {
         }
 
     }
+
     private BaseVariantOutput getVariantOutputByTaskName(Project pt,String taskName){
         if(taskName == null) return null;
         final BaseVariantOutput[] baseVariantOutput = new BaseVariantOutput[1];
@@ -158,6 +169,7 @@ public class ConfigurationHelper {
             @Override
             public void accept(BaseVariantOutput variantOutput) {
                 Task assembleTask = variantOutput.getAssemble();
+
                 if(taskName.indexOf(assembleTask.getName()) != -1){
                     baseVariantOutput[0] = variantOutput;
                 }

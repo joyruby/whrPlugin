@@ -3,8 +3,9 @@ import com.android.build.gradle.AppPlugin;
 import com.android.build.gradle.BasePlugin;
 import com.android.build.gradle.internal.DependencyManager;
 import com.android.build.gradle.internal.ExtraModelInfo;
-import com.android.build.gradle.internal.WhrDependencyManager;
+import com.android.build.gradle.internal.SdkHandler;
 import com.android.build.gradle.internal.TaskManager;
+import com.android.build.gradle.internal.WhrDependencyManager2;
 import com.example.whr.plugin.builder.tool.ReflectUtils;
 
 import org.apache.tools.ant.util.ReflectUtil;
@@ -25,8 +26,12 @@ public class AppPluginHook {
         if(null == appPlugin) return;
         TaskManager taskManager = (TaskManager) ReflectUtils.getField(BasePlugin.class,appPlugin,"taskManager");
         DependencyManager dependencyManager = (DependencyManager) ReflectUtils.getField(TaskManager.class,taskManager,"dependencyManager");
-        WhrDependencyManager newDependencyManager = new WhrDependencyManager(project,
-                (ExtraModelInfo) ReflectUtil.getField(dependencyManager,"extraModelInfo"));
+        WhrDependencyManager2 newDependencyManager = new WhrDependencyManager2(project,
+                (ExtraModelInfo) ReflectUtil.getField(dependencyManager,"extraModelInfo"),(SdkHandler)ReflectUtil
+                .getField(dependencyManager,
+                        "sdkHandler"));
         ReflectUtils.updateField(TaskManager.class,taskManager,"dependencyManager",newDependencyManager);
+
+
     }
 }
